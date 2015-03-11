@@ -67,6 +67,8 @@ for year in range(2003,2015):
     currRoundSlots = currRoundSlots.loc[(~currRoundSlots.strongseed.isin(preRound.slot.values)) & (~currRoundSlots.weakseed.isin(preRound.slot.values))]
     # add first round matchups
     yearSlotOut = yearSlotOut.append(currRoundSlots)
+#     from IPython.core.debugger import Tracer
+#     Tracer()()
     
     
     for roundNum in range(2,7): # 6 rounds
@@ -95,14 +97,25 @@ for year in range(2003,2015):
         # append to yearly matchups
         currRoundSlots=bothSeedMerge
         yearSlotOut = yearSlotOut.append(currRoundSlots)
-
+        
+#     from IPython.core.debugger import Tracer
+#     Tracer()()
     all_slots = all_slots.append(yearSlotOut)
 
+all_slots = all_slots.drop("seed")
 # now replace with team ids
 all_slots["strongseed"] = all_slots.season.map(str) + "_" + all_slots.strongseed.map(str)
 all_slots["weakseed"] = all_slots.season.map(str) + "_" + all_slots.weakseed.map(str)
 
 seeds["seasonseed"] = seeds.season.map(str) + "_" + seeds.seed.map(str)
+
+
+strongs = pd.merge(all_slots,seeds, "left",left_on="strongseed",right_on="seasonseed")
+strongs = strongs[["season_x","slot","strongseed","weakseed","round","team"]]
+strongs.columns = ["season","slot","strongseed","weakseed","round","strongteam"]
+both = pd.merge(strongs,seeds, "left",left_on="weakseed",right_on="seasonseed")
+both = both[["season_x","slot","strongseed","weakseed","round","strongteam","team"]]
+both.columns = ["season","slot","strongseed","weakseed","round","strongteam", "weakteam"]
 
 
 #####################################
@@ -165,6 +178,8 @@ for ix, row in allMatchups.iterrows():
     #elif t1seed < t2seed:
     #    predict = 1.0
     seededBenchmark[ix] = predict
+from IPython.core.debugger import Tracer
+Tracer()()
 
 allMatchups["seedDiff"] = seedDiff
 

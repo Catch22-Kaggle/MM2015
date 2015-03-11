@@ -151,11 +151,11 @@ def model1(tourn, reg, matchups, priorMatchupMeanMargin):
         #return np.sum(series.values[:,1:]*expp, axis=0)
     
     
-    grouped = teamStats.groupby(teamStats.team_id)
-    groupedTeamStats = grouped.agg(expwMean) # skips nans by default
+#     grouped = teamStats.groupby(teamStats.team_id)
+#     groupedTeamStats = grouped.agg(expwMean) # skips nans by default
     
     # equally weighted average
-#     groupedTeamStats = teamStats.groupby(teamStats.team_id).mean() # skips nans by default
+    groupedTeamStats = teamStats.groupby(teamStats.team_id).mean() # skips nans by default
     
     
     for match_id, row in matchups_in.iterrows():
@@ -164,7 +164,7 @@ def model1(tourn, reg, matchups, priorMatchupMeanMargin):
 #         t2Matches = teamStats.loc[teamStats.team_id == row["t2_id"]]
 #         diffs = t1Matches.mean() - t2Matches.mean()
         diffs = groupedTeamStats.loc[row["t1_id"]] - groupedTeamStats.loc[row["t2_id"]]
-        X.loc[match_id,xCols] = diffs.values[2:]
+        X.loc[match_id,xCols] = diffs.values[1:]
         
     X["seedDiff"] = matchups_in.seedDiff
     
