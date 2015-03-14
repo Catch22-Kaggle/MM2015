@@ -5,8 +5,32 @@ from sklearn.metrics.metrics import classification_report, confusion_matrix
 from evaluate import logloss
 import statsmodels.api as sm
 
-def model1(tourn, reg, matchups):
+def expWeight(n, a=None):
+    '''
+    function to generate an exponential weight series of length n
+    '''
+    alpha = 1- (a if a else 1.5/(1+n))
+#     alpha = 1- (a if a else 4.0/(1+n))
+    ixs = range(n-1,-1,-1)
+    wts = [alpha**ix for ix in ixs]
+    return wts / np.sum(wts)
+
+# def expWeight(n, a=None):
+#     '''
+#     function to generate an exponential weight series of length n
+#     '''
+#     alpha = 0.25
+# #     alpha = 1- (a if a else 4.0/(1+n))
+#     ixs = range(n-1,-1,-1)
+#     wts = [np.exp(-alpha*ix) for ix in ixs]
+#     
+#     return wts / np.sum(wts)    
+     
+    
+
+def model1(tourn, reg, matchups, priorMatchupMeanMargin):
     # logistic regression
+    
     
     #daynum
     #wloc
@@ -34,6 +58,8 @@ def model1(tourn, reg, matchups):
     reg["wteam_id"] = reg.season.map(str) + "_" + reg.wteam.map(str) 
     reg["lteam_id"] = reg.season.map(str) + "_" + reg.lteam.map(str)
     reg["winningMargin"] = reg.wscore - reg.lscore
+    
+    priorMatchupMeanMargin.fillna(0.0, inplace=True)
     
     
     teams = pd.concat([reg.wteam_id, reg.lteam_id]).unique()
@@ -106,7 +132,30 @@ def model1(tourn, reg, matchups):
     # handle any infinit percentages
     teamStats.replace(np.inf,np.nan, inplace=True)
     
-    groupedTeamStats = teamStats.groupby(teamStats.team_id).mean() # skips nans by default
+    
+    ewma = pd.stats.moments.ewma
+    
+    def expwMean(series):
+        
+        expp = expWeight(series.shape[0]).reshape((-1,1))
+        series.sort("daynum",inplace=True)
+        res = pd.Series(np.sum(series.values[:,1:]*expp, axis=0),index=series.columns[1:])
+        if np.isnan(res.ftpct):
+            res.ftpct = series.ftpct.mean()
+        if np.isnan(res.fgpct):
+            res.fgpct = series.fgpct.mean()
+        if np.isnan(res.fg3pct):
+            res.fg3pct = series.fg3pct.mean()
+        #series.values[-1,0]
+        return res
+        #return np.sum(series.values[:,1:]*expp, axis=0)
+    
+    
+    grouped = teamStats.groupby(teamStats.team_id)
+    groupedTeamStats = grouped.agg(expwMean) # skips nans by default
+    
+    # equally weighted average
+#     groupedTeamStats = teamStats.groupby(teamStats.team_id).mean() # skips nans by default
     
     
     for match_id, row in matchups_in.iterrows():
@@ -115,9 +164,13 @@ def model1(tourn, reg, matchups):
 #         t2Matches = teamStats.loc[teamStats.team_id == row["t2_id"]]
 #         diffs = t1Matches.mean() - t2Matches.mean()
         diffs = groupedTeamStats.loc[row["t1_id"]] - groupedTeamStats.loc[row["t2_id"]]
-        X.loc[match_id,xCols] = diffs.values[1:]
+        X.loc[match_id,xCols] = diffs.values[2:]
         
     X["seedDiff"] = matchups_in.seedDiff
+    
+#     from IPython.core.debugger import Tracer
+#     Tracer()()
+    X["priorMatchupMargin"] = priorMatchupMeanMargin
     
     # turnovers not significant?
     X = X.drop("avgToDiff",1)
@@ -126,18 +179,27 @@ def model1(tourn, reg, matchups):
     X_actualTourn = X.loc[tourn_in.index]
     
     # statsmodels
-    from IPython.core.debugger import Tracer
-    Tracer()()
     
+    from IPython.core.debugger import Tracer
+    Tracer()()     
     
     logitModel = sm.Logit(y, X_actualTourn)
     res = logitModel.fit()
     print res.summary()
     
-    from IPython.core.debugger import Tracer
-    Tracer()()
     yPred = logitModel.predict(res.params, X_actualTourn)
     print "logloss = " + str(logloss(y, yPred))
+    
+    actualTournPred = pd.Series(yPred, index=X_actualTourn.index)
+    fullMatchupPred = pd.DataFrame(logitModel.predict(res.params, X), index=X.index, columns=["prob"])
+    
+    fullMatchupPred["season"] = matchups.season.map(int)
+    
+    
+    
+    return (fullMatchupPred, 
+            actualTournPred) 
+    
     
     
     
@@ -166,6 +228,12 @@ def model1(tourn, reg, matchups):
     Tracer()()
      
     regress.fit(X_actualTourn, y)
+    
+    
+    
+    
+    # return the 
+    
 #     
 #     # predict_proba - probability prediction
 #     # predict - classifier prediction (win/loss)
@@ -193,4 +261,5 @@ def model1(tourn, reg, matchups):
     
     return (full_probab, 
             pd.Series(regress.predict_proba(X_actualTourn)[:,1], index=X_actualTourn.index)) 
+    
     

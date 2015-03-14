@@ -98,6 +98,11 @@ for year in range(2003,2015):
 
     all_slots = all_slots.append(yearSlotOut)
 
+# now replace with team ids
+all_slots["strongseed"] = all_slots.season.map(str) + "_" + all_slots.strongseed.map(str)
+all_slots["weakseed"] = all_slots.season.map(str) + "_" + all_slots.weakseed.map(str)
+
+seeds["seasonseed"] = seeds.season.map(str) + "_" + seeds.seed.map(str)
 
 
 #####################################
@@ -113,6 +118,8 @@ tourn_det.index = tourn_ix
 # create a result column in tourn, representing the 'actual' result (ie. did the team 
 # with the lower ID win?
 reg_det["result"] = 1.0 * (reg_det["wteam"] < reg_det["lteam"])
+reg_det["wmargin"] = (reg_det["result"] * 2 - 1) # 1 if winner is t1, -1 otherwise
+reg_det["wmargin"] = reg_det["wmargin"] * (reg_det["wscore"] - reg_det["lscore"]) # winscore - losescore * 1 if winner is t1 - ie. t1score - t2score
 tourn_det["result"] = 1.0 * (tourn_det["wteam"] < tourn_det["lteam"])
 tourn_det["t1"] = tourn_det[["wteam","lteam"]].min(axis=1)
 tourn_det["t2"] = tourn_det[["wteam","lteam"]].max(axis=1)
@@ -160,13 +167,20 @@ for ix, row in allMatchups.iterrows():
     seededBenchmark[ix] = predict
 
 allMatchups["seedDiff"] = seedDiff
+
+priorMatches = reg_det.ix[allMatchups.index]
+priorMatchesGrouped = priorMatches.groupby(priorMatches.index) #, axis, level, as_index, sort, group_keys, squeeze)
+# take the mean of each
+priorMatchesMeanWins = priorMatchesGrouped.result.mean() 
+priorMatchesMeanMargin = priorMatchesGrouped.wmargin.mean()
+# priorMatches = pd.Series([reg_det.loc[reg_det.index == matchIx].result.mean() for matchIx in allMatchups.index], index=allMatchups.index)
+priorMatchesMeanWins.fillna(0.5, inplace=True)
+
 # regression model!
 print "generating logistic regression model"
-model1_fullPred, model1_pred = model1(tourn_det, reg_det, allMatchups)
+model1_fullPred, model1_pred = model1(tourn_det, reg_det, allMatchups, priorMatchesMeanMargin)
 
-
-priorMatches = pd.Series([reg_det.loc[reg_det.index == matchIx].result.mean() for matchIx in allMatchups.index], index=allMatchups.index)
-priorMatches.fillna(0.5, inplace=True)
+#priorMatches =
 
 
 
@@ -200,7 +214,7 @@ tourney_predictions["prediction"] = seededBenchmark
 evaluate(tourney_predictions)
 
 print "priorMatchup prediction"
-tourney_predictions["prediction"] = priorMatches
+tourney_predictions["prediction"] = priorMatchesMeanWins
 
 evaluate(tourney_predictions)
 
@@ -211,6 +225,8 @@ evaluate(tourney_predictions)
 
 # output 2011-2014 predictions for stage 1 results
 
+from IPython.core.debugger import Tracer
+Tracer()()
 stage1_predictions = model1_fullPred.loc[model1_fullPred.season >= 2011]["prob"]
 
 stage1_predictions.to_csv("stage1_1.csv", header=["pred"], index_label="id")
