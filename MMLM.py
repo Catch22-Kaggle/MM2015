@@ -6,15 +6,21 @@ from evaluate import evaluate
 from model1 import model1
 
 reg_det = pd.read_csv("regular_season_detailed_results.csv")
+reg_det_2015 = pd.read_csv("regular_season_detailed_results_2015.csv")
+reg_det = reg_det.append(reg_det_2015)
 tourn_det = pd.read_csv("tourney_detailed_results.csv")
 
 seeds = pd.read_csv("tourney_seeds.csv")
+seeds2015 = pd.read_csv("tourney_seeds_2015.csv")
+seeds = seeds.append(seeds2015)
 # parse this a bit more
 seeds["region"] = seeds.seed.apply(lambda x: x[0])
 seeds["regionSeed"] = seeds.seed.apply(lambda x: int(x[1:3]))
 seeds.index = seeds.season.map(str)+"_"+seeds.team.map(str)
 
 slots = pd.read_csv("tourney_slots.csv")
+slots2015 = pd.read_csv("tourney_slots_2015.csv")
+slots = slots.append(slots2015)
 slots["round"] = slots.slot.str[1].map(int)
 
 
@@ -26,7 +32,7 @@ slots["seed"] = np.nan
 
 
 all_slots = pd.DataFrame(columns=["season","slot","strongseed","weakseed","round","seed"])
-for year in range(2003,2015):
+for year in range(2003,2016):
     print "calculating slots for " + str(year)
     
     yearSlots = slots.loc[slots.season==year]
@@ -113,9 +119,12 @@ seeds["seasonseed"] = seeds.season.map(str) + "_" + seeds.seed.map(str)
 strongs = pd.merge(all_slots,seeds, "left",left_on="strongseed",right_on="seasonseed")
 strongs = strongs[["season_x","slot","strongseed","weakseed","round","team"]]
 strongs.columns = ["season","slot","strongseed","weakseed","round","strongteam"]
-both = pd.merge(strongs,seeds, "left",left_on="weakseed",right_on="seasonseed")
-both = both[["season_x","slot","strongseed","weakseed","round","strongteam","team"]]
-both.columns = ["season","slot","strongseed","weakseed","round","strongteam", "weakteam"]
+matchupSlots = pd.merge(strongs,seeds, "left",left_on="weakseed",right_on="seasonseed")
+matchupSlots = matchupSlots[["season_x","slot","strongseed","weakseed","round","strongteam","team"]]
+matchupSlots.columns = ["season","slot","strongseed","weakseed","round","strongteam", "weakteam"]
+
+matchupSlots["strongteam"] = matchupSlots.season.map(str) + "_" + matchupSlots.strongteam.map(str)
+matchupSlots["weakteam"] = matchupSlots.season.map(str) + "_" + matchupSlots.weakteam.map(str)
 
 
 #####################################
@@ -140,13 +149,15 @@ tourn_det["t2"] = tourn_det[["wteam","lteam"]].max(axis=1)
 predictions = pd.DataFrame(columns=["t1","t2"])
 print "generating all possible matchups for each year"
 all_matchups = None
-for year in range(2003,2015):
+for year in range(2003,2016):
 #for year in range(2011,2012):
-    year_tourn = tourn_det[tourn_det.season == year]
-    year_reg = reg_det[reg_det.season == year]
+#     year_tourn = tourn_det[tourn_det.season == year]
+#     year_reg = reg_det[reg_det.season == year]
+    year_seeds = seeds.loc[seeds.season==year]
     
     # we're only interested in teams that made the tourney for this year...
-    year_teams = pd.Series(year_tourn.loc[:,["wteam","lteam"]].values.ravel()).unique()
+    year_teams = year_seeds["team"] #pd.Series(year_seeds.loc[:,["wteam","lteam"]].values.ravel()).unique()
+    year_teams = year_teams.copy()
     year_teams.sort()
 
     # all 2-team combinations of the team list...
@@ -178,8 +189,7 @@ for ix, row in allMatchups.iterrows():
     #elif t1seed < t2seed:
     #    predict = 1.0
     seededBenchmark[ix] = predict
-from IPython.core.debugger import Tracer
-Tracer()()
+
 
 allMatchups["seedDiff"] = seedDiff
 
@@ -193,21 +203,7 @@ priorMatchesMeanWins.fillna(0.5, inplace=True)
 
 # regression model!
 print "generating logistic regression model"
-model1_fullPred, model1_pred = model1(tourn_det, reg_det, allMatchups, priorMatchesMeanMargin)
-
-#priorMatches =
-
-
-
-
-
-
-#         
-#         #from IPython.core.debugger import Tracer
-#         #Tracer()()
-#     
-#     
-    
+model1_fullPred, model1_pred = model1(tourn_det, reg_det, allMatchups, priorMatchesMeanMargin, matchupSlots)
         
     # we have predictions now.
     # so line them up with actual results and evaluate them
@@ -215,7 +211,6 @@ model1_fullPred, model1_pred = model1(tourn_det, reg_det, allMatchups, priorMatc
 print "evaluating model"
 correct = 0
 guessed = 0
-prediction = year_tourn
 tourney_predictions = pd.DataFrame(tourn_det[["result","season"]],index=tourn_det.index)
 
 tourney_predictions["season"] = tourn_det.season
@@ -245,6 +240,11 @@ Tracer()()
 stage1_predictions = model1_fullPred.loc[model1_fullPred.season >= 2011]["prob"]
 
 stage1_predictions.to_csv("stage1_1.csv", header=["pred"], index_label="id")
+
+stage2_predictions = model1_fullPred.loc[model1_fullPred.season == 2015]["prob"]
+
+stage2_predictions.to_csv("stage2_1.csv", header=["pred"], index_label="id")
+
 
     
 #         

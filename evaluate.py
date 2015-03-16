@@ -9,9 +9,10 @@ def evaluate(model):
     print "%.4f Correct: %d out of %d" % (numCorrectPred / float(numPred), numCorrectPred, numPred)
 
     print "2011-2014"
-    print "LogLoss: %f" % logloss(model.result[model.season>=2011],model.prediction[model.season>=2011])
-    numCorrectPred = np.count_nonzero(np.sign(model.prediction[model.season>=2011]-0.5) == np.sign(model.result[model.season>=2011] - 0.5))
-    numPred = (model.prediction[model.season>=2011]==0.5).value_counts()[False]
+    stage1model = model.loc[(model.season>=2011) & (model.season<2015)]
+    print "LogLoss: %f" % logloss(stage1model.result,stage1model.prediction)
+    numCorrectPred = np.count_nonzero(np.sign(stage1model.prediction-0.5) == np.sign(stage1model.result - 0.5))
+    numPred = (stage1model.prediction==0.5).value_counts()[False]
     print "%.4f Correct: %d out of %d" % (numCorrectPred / float(numPred), numCorrectPred, numPred)
     
     print "Logloss per year..."

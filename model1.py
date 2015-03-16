@@ -4,7 +4,21 @@ from sklearn.linear_model.logistic import LogisticRegression
 from sklearn.metrics.metrics import classification_report, confusion_matrix
 from evaluate import logloss
 import statsmodels.api as sm
+import multiprocessing
+import itertools
 
+
+def doF(args):
+    (match_id, row), matchupSlots = args
+    roundPlayed = matchupSlots.loc[(matchupSlots.t1t2 == (row["t1_id"]+row["t2_id"])) | (matchupSlots.t1t2 == (row["t2_id"]+row["t1_id"]))]
+        
+    return roundPlayed.round.values[0]
+
+def doG(args):
+    (match_id, row), groupedTeamStats, xCols, X = args
+    diffs = groupedTeamStats.loc[row["t1_id"]] - groupedTeamStats.loc[row["t2_id"]]
+    X.loc[match_id,xCols] = diffs.values[1:]
+    
 def expWeight(n, a=None):
     '''
     function to generate an exponential weight series of length n
@@ -28,7 +42,7 @@ def expWeight(n, a=None):
      
     
 
-def model1(tourn, reg, matchups, priorMatchupMeanMargin):
+def model1(tourn, reg, matchups, priorMatchupMeanMargin, matchupSlots):
     # logistic regression
     
     
@@ -157,16 +171,43 @@ def model1(tourn, reg, matchups, priorMatchupMeanMargin):
     # equally weighted average
     groupedTeamStats = teamStats.groupby(teamStats.team_id).mean() # skips nans by default
     
+    matchupSlots["t1t2"] = matchupSlots.strongteam+matchupSlots.weakteam
+    
+    matchups_in["t1t2"] = matchups_in.t1_id+matchups_in.t2_id
+    
+    
+            
     
     for match_id, row in matchups_in.iterrows():
-        
+         
 #         t1Matches = teamStats.loc[teamStats.team_id == row["t1_id"]]
 #         t2Matches = teamStats.loc[teamStats.team_id == row["t2_id"]]
 #         diffs = t1Matches.mean() - t2Matches.mean()
         diffs = groupedTeamStats.loc[row["t1_id"]] - groupedTeamStats.loc[row["t2_id"]]
         X.loc[match_id,xCols] = diffs.values[1:]
+#         roundPlayed = matchupSlots.loc[((matchupSlots.strongteam == row["t1_id"]) & (matchupSlots.weakteam == row["t2_id"])) | ((matchupSlots.weakteam == row["t1_id"]) & (matchupSlots.strongteam == row["t2_id"]))  ]
+#         roundPlayed = matchupSlots.loc[(matchupSlots.t1t2 == (row["t1_id"]+row["t2_id"])) | (matchupSlots.t1t2 == (row["t2_id"]+row["t1_id"]))]
+ 
+#         if roundPlayed.shape[0]!=1:
+#             raise Exception ("oops")
+#         X.loc[match_id,"seedDiff"] = roundPlayed.round.values[0]
+            
         
+    # use raw seed difference
     X["seedDiff"] = matchups_in.seedDiff
+
+
+    # adjust seed difference by the round the matchup occurs in
+    
+    pool = multiprocessing.Pool(4)
+    mapResults = pool.map(doF, itertools.izip(matchups_in.iterrows(), itertools.repeat(matchupSlots)),100)
+#     results = [pool.apply_async(doF, (match_id, row)) for match_id, row in matchups_in.iterrows()]
+     
+    from IPython.core.debugger import Tracer
+    Tracer()()
+    X["roundPlayed"] = mapResults
+    X["seedDiff"] = X.seedDiff / np.sqrt(X.roundPlayed)
+    X.drop("roundPlayed", axis=1, inplace=True)
     
 #     from IPython.core.debugger import Tracer
 #     Tracer()()
