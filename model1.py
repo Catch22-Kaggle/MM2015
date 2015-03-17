@@ -215,6 +215,8 @@ def model1(tourn, reg, matchups, priorMatchupMeanMargin, matchupSlots):
     
     # turnovers not significant?
     X = X.drop("avgToDiff",1)
+#    X = X.drop("seedDiff",1)
+#    X["reboundDiff"] = X.avgORDiff - X.avgDRDiff
     
     # need to scale X??
     X_actualTourn = X.loc[tourn_in.index]
